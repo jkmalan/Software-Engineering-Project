@@ -1,16 +1,10 @@
-from flask_wtf import FlaskForm
-from wtforms import (
-    DateField, StringField, TextAreaField,
-    SelectMultipleField, SubmitField,
-    PasswordField, BooleanField,
-    DateTimeField, IntegerField, FloatField, FileField, SelectField)
-from wtforms.fields.html5 import TelField
-from wtforms.validators import DataRequired, Length, Email, EqualTo, ValidationError, NumberRange
 from flask_login import current_user
-from .models import Users, AffirmationEntry
-from . import db
+from flask_wtf import FlaskForm
+from wtforms import (StringField, TextAreaField, SubmitField, PasswordField, BooleanField)
+from wtforms.validators import DataRequired, Length, Email, EqualTo, ValidationError
 
-from dateutil.tz import tz, tzlocal, tzutc
+from app.main.models import Users
+
 
 class RegisterForm(FlaskForm):
     Username = StringField('UserName', validators=[DataRequired()])
@@ -59,6 +53,7 @@ class ChangePasswordForm(FlaskForm):
         if not user.check_password(old_password.data):
             return ValidationError(message='Invalid Old Password.')
 
+
 class UpdateAccountInfo(FlaskForm):
     Username = StringField('New Usermame', validators=[DataRequired()])
     email = StringField('Email', validators=[DataRequired(), Email()])
@@ -76,10 +71,12 @@ class UpdateAccountInfo(FlaskForm):
         if user is not None:
             raise ValidationError('Email already exists! Choose a different one!')
 
+
 class createAEntry(FlaskForm):
     EntryTitle = StringField('Affirmation Entry Title', validators=[DataRequired()])
     EntryText = StringField('Affirmation Entry Text', validators=[DataRequired()])
     submit = SubmitField('Create')
+
 
 class HelpDeskForm(FlaskForm):
     Name = StringField('Full Name', validators=[DataRequired("Please enter your name.")])

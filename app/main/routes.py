@@ -1,56 +1,27 @@
-import sys, csv, os, datetime
-from datetime import timedelta
+import os, spacy
+from datetime import timedelta, datetime
 
-from bin.ud.conll17_ud_eval import HEAD
+from flask import flash, redirect, render_template, request, Response, url_for
+from flask_login import login_required, logout_user, login_user, current_user
 from werkzeug.urls import url_parse
-from app.main import bp, models
-from flask import Flask, redirect, render_template, request, Blueprint, url_for, jsonify, flash
-from app.main import bp, models
-from flask import Flask, redirect, render_template, request, Blueprint, url_for, jsonify
-from app.main.models import *
-from .models import Users
-from .models import Journal
-from .models import JournalEntry
-from .models import AffirmationEntry
-from flask import flash
-from flask_sqlalchemy import SQLAlchemy
-# from app.api.request import *
-from app.api.request import analyze
-from flask_login import login_required, current_user, logout_user, login_user
-from .forms import RegisterForm, LoginForm, ChangePasswordForm, UpdateAccountInfo, createAEntry, HelpDeskForm
-from flask_mail import Message, Mail
 
-
-app = Flask(__name__)
-from .forms import RegisterForm, LoginForm, ChangePasswordForm, UpdateAccountInfo, createAEntry
-from flask import send_file
-from flask import Response
-
-app.config.update(
-    DEBUG=True,
-    #EMAIL SETTINGS
-    MAIL_SERVER='smtp.gmail.com',
-    MAIL_PORT=465,
-    MAIL_USE_SSL=True,
-    MAIL_USERNAME = 'sentijournalapp@gmail.com',
-    MAIL_PASSWORD = 'sentijournalapp'
-)
-mail=Mail(app)
-
-#import chatbot files
 from chatterbot import ChatBot
-from chatterbot.trainers import ChatterBotCorpusTrainer
-from chatterbot.trainers import ListTrainer
-import spacy
-nlp = spacy.load('en_core_web_sm')
-import en_core_web_sm
-nlp = en_core_web_sm.load()
+from chatterbot.trainers import ChatterBotCorpusTrainer, ListTrainer
 
-@bp.route('/', methods=['GET','POST'])
+from app.main import bp, db
+from app.api.request import analyze
+from app.main.models import Users, Journal, JournalEntry, AffirmationEntry, Therapist, Patient, Request, T_Patients
+from app.main.forms import RegisterForm, LoginForm, ChangePasswordForm, UpdateAccountInfo, createAEntry
+
+nlp = spacy.load('en_core_web_sm')
+
+
+@bp.route('/', methods=['GET', 'POST'])
 def index():
     user = current_user
 
-    return render_template('index.html', user = user)
+    return render_template('index.html', user=user)
+
 
 @bp.route('/register', methods=['post', 'get'])
 def register():
@@ -60,10 +31,9 @@ def register():
     form = RegisterForm()
 
     if form.validate_on_submit():
-
-        user = models.Users(
+        user = Users(
             Username=form.Username.data, email=form.email.data, fullname=form.fullname.data
-            )
+        )
         user.password = form.password.data
         db.session.add(user)
         db.session.commit()
@@ -71,13 +41,14 @@ def register():
         return redirect(url_for('main.login'))
     return render_template('user_register.html', title='User Register', form=form)
 
+
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('main.index'))
     form = LoginForm()
     if form.validate_on_submit():
-        user = models.Users.query.filter_by(Username=form.Username.data).first()
+        user = Users.query.filter_by(Username=form.Username.data).first()
         if user is None or not user.check_password(form.password.data):
             flash('UserName or Password was Wrong', category='danger')
             return redirect(url_for('main.login'))
@@ -87,6 +58,7 @@ def login():
             next_page = url_for('main.index')
         return redirect(next_page)
     return render_template('user_login.html', title='User Login', form=form)
+
 
 @bp.route('/update', methods=['POST', 'GET'])
 @login_required
@@ -106,41 +78,46 @@ def update():
         form.email.data = current_user.email
     return render_template('user_update.html', form=form)
 
+
 @bp.route('/viewAccount')
 @login_required
 def accountview():
-    #user = current_user
-    requests = Request.query.filter_by(to = current_user.id)
+    # user = current_user
+    requests = Request.query.filter_by(to=current_user.id)
     me = Patient.query.get(current_user.id)
     patient = Patient.query.get(current_user.id)
     mytherapist = 0
 
     if current_user.userstatus == "Patient":
         me = Patient.query.get(current_user.id)
-        requests = Request.query.filter_by(to = current_user.id)
-        patients = Patient.query.join(T_Patients, Patient.id == T_Patients.p_id).filter(T_Patients.t_id == current_user.id).all()
-        #requests = Request.query.filter_by(to = current_user.id)
-        #therapist = T_Patients.query.filter_by(p_id = current_user.id)
-        mytherapist = me.T_ID#Patient.query.filter_by(T_ID = me.T_ID)
+        requests = Request.query.filter_by(to=current_user.id)
+        patients = Patient.query.join(T_Patients, Patient.id == T_Patients.p_id).filter(
+            T_Patients.t_id == current_user.id).all()
+        # requests = Request.query.filter_by(to = current_user.id)
+        # therapist = T_Patients.query.filter_by(p_id = current_user.id)
+        mytherapist = me.T_ID  # Patient.query.filter_by(T_ID = me.T_ID)
         print(me.T_ID)
-        print (patients, requests)
-        return render_template('accountview.html', requests = requests, mytherapist = mytherapist, me = me, patients = patients)
-  
+        print(patients, requests)
+        return render_template('accountview.html', requests=requests, mytherapist=mytherapist, me=me, patients=patients)
+
     if current_user.userstatus == "Therapist":
         me = Therapist.query.get(current_user.id)
-        requests = Request.query.filter_by(to = current_user.id)
-        mypatients = T_Patients.query.filter_by(t_id = current_user.id)
-        patients = Patient.query.join(T_Patients, Patient.id == T_Patients.p_id).filter(T_Patients.t_id == current_user.id).all()
-        mytherapist = T_Patients.query.filter_by(p_id = 0)
+        requests = Request.query.filter_by(to=current_user.id)
+        mypatients = T_Patients.query.filter_by(t_id=current_user.id)
+        patients = Patient.query.join(T_Patients, Patient.id == T_Patients.p_id).filter(
+            T_Patients.t_id == current_user.id).all()
+        mytherapist = T_Patients.query.filter_by(p_id=0)
         patient = Patient.query.get(0)
 
+        # return render_template('accountview.html', requests = requests, patients = patients)
+        return render_template('accountview.html', requests=requests, me=me, mytherapist=mytherapist, patient=patient,
+                               patients=patients)
 
-        #return render_template('accountview.html', requests = requests, patients = patients)
-        return render_template('accountview.html', requests = requests, me = me, mytherapist = mytherapist, patient = patient, patients = patients)
-    
-    #print (patient, patients, requests)
-    
-    return render_template('accountview.html', requests = requests, mytherapist = mytherapist) #, patient = patient, patients = patients, me = me)
+    # print (patient, patients, requests)
+
+    return render_template('accountview.html', requests=requests,
+                           mytherapist=mytherapist)  # , patient = patient, patients = patients, me = me)
+
 
 @bp.route('/reset', methods=['post', 'get'])
 @login_required
@@ -148,7 +125,7 @@ def reset():
     form = ChangePasswordForm()
 
     if form.validate_on_submit():
-        user = models.Users.query.get(current_user.id)
+        user = Users.query.get(current_user.id)
         if user is None:
             os.abort(404)
         if not user.check_password(form.old_password.data):
@@ -161,19 +138,22 @@ def reset():
 
     return render_template('user_reset.html', form=form)
 
+
 @bp.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('main.login'))
 
-@bp.route('/journal', methods = ['GET', 'POST'])
+
+@bp.route('/journal', methods=['GET', 'POST'])
 def journal():
     # entry = request.form.get("entry")
     entries = JournalEntry.query.all()
-    return render_template('journal.html', journal = journal, entries=entries)
+    return render_template('journal.html', journal=journal, entries=entries)
 
-@bp.route('/journal/downloadcsv', methods = ['GET', 'POST'])
+
+@bp.route('/journal/downloadcsv', methods=['GET', 'POST'])
 def journal_downloadcsv():
     # entry = request.form.get("entry")
     entries = JournalEntry.query.all()
@@ -203,24 +183,26 @@ def journal_downloadcsv():
 
 
 @bp.route('/search', methods=['GET', 'POST'])
-def search():#JournalID):
+def search():  # JournalID):
     dt = request.args.get("date")
     ft = '%Y-%m-%d'
     date = datetime.strptime(dt, ft)
     entries = JournalEntry.query.filter(JournalEntry.Date_Time.between(date, date + timedelta(days=1))).all()
     return render_template('search.html', entries=entries)
 
+
 @bp.route('/createjournal', methods=['POST', 'GET'])
 def create_journal():
-    #/<string:id>
+    # /<string:id>
     title = request.form.get("title")
     journal = Journal(title=title, UserID=current_user.id)
     db.session.add(journal)
     db.session.commit()
 
-    journal=Journal.query.all()
+    journal = Journal.query.all()
 
     return render_template('journal.html', journal=journal)
+
 
 @bp.route('/edit/<int:EntryID>', methods=['GET', 'POST', 'PUT'])
 def edit(EntryID):
@@ -231,11 +213,12 @@ def edit(EntryID):
         entry.EntryTitle = request.form.get("newtitle")
         entry.EntryText = request.form.get("newtext")
 
-    #entries = JournalEntry.query.all()
+        # entries = JournalEntry.query.all()
 
         return render_template('journal.html', entries=entries)
 
     return render_template('edit.html', entries=entries)
+
 
 @bp.route('/add/<int:JournalID>', methods=['GET', 'POST'])
 def add(JournalID):
@@ -252,20 +235,21 @@ def add(JournalID):
 
         journal.add_entry(entrytitle, entrytext, result)
 
-        #entries = journal.entries
-        #entry = JournalEntry(EntryTitle = entrytitle, EntryText = entrytext, Date_Time = datetime)
-        #entry = journal.add_entry(entrytitle, entrytext, result)
-        #db.session.add(entry)
-        #db.session.commit()
+        # entries = journal.entries
+        # entry = JournalEntry(EntryTitle = entrytitle, EntryText = entrytext, Date_Time = datetime)
+        # entry = journal.add_entry(entrytitle, entrytext, result)
+        # db.session.add(entry)
+        # db.session.commit()
     entries = JournalEntry.query.all()
     return render_template('journal.html', journal=journal, entries=entries)
 
+
 @bp.route('/delete/<int:EntryID>', methods=['POST', 'GET', 'DELETE'])
 def delete(EntryID):
-    #entry = JournalEntry.query.get(EntryID)
+    # entry = JournalEntry.query.get(EntryID)
 
-    #JournalEntry.query.filter_by(EntryID = EntryID).delete()
-    entry = JournalEntry.query.filter_by(EntryID = EntryID).first()
+    # JournalEntry.query.filter_by(EntryID = EntryID).delete()
+    entry = JournalEntry.query.filter_by(EntryID=EntryID).first()
 
     db.session.delete(entry)
     db.session.commit()
@@ -274,9 +258,9 @@ def delete(EntryID):
     return render_template('journal.html', entries=entries)
     entry = JournalEntry.query.get(EntryID)
 
-@bp.route('/analyze/<int:EntryID>', methods = ['GET', 'POST'])
-def analyze_entry(EntryID):
 
+@bp.route('/analyze/<int:EntryID>', methods=['GET', 'POST'])
+def analyze_entry(EntryID):
     emotion = ""
     entry = JournalEntry.query.get(EntryID)
 
@@ -290,9 +274,9 @@ def analyze_entry(EntryID):
 
     return render_template('journal.html', entries=entries)
 
-@bp.route('/analyze', methods = ['GET', 'POST'])
-def analyze_text():
 
+@bp.route('/analyze', methods=['GET', 'POST'])
+def analyze_text():
     analyzed_text = ""
     text = request.form['entry']
 
@@ -301,35 +285,37 @@ def analyze_text():
 
     return render_template('analyze.html', analyzed_text=analyzed_text, text=text)
 
+
 @bp.route('/populate', methods=['GET', 'POST'])
 def populate():
-    query = db.insert(Users).values(Username="glamalva", fullName='grace', passwordHash="dfsfs34",  Email="gracegmailcom")
+    query = db.insert(Users).values(Username="glamalva", fullName='grace', passwordHash="dfsfs34",
+                                    Email="gracegmailcom")
     # db.session.execute( "INSERT INTO Users (Username, fullName, passwordHash, Email) VALUES ('glamalva', 'gracelamalva', 'adfa43', 'glamalvagmailcom')")
-    analyzed_text =  analyze(text)
+    analyzed_text = analyze(text)
 
-    return render_template('analyze.html', analyzed_text = analyzed_text, text = text)
+    return render_template('analyze.html', analyzed_text=analyzed_text, text=text)
 
-@bp.route('/dummyprofile/<string:Username>', methods = ['GET','POST'])
+
+@bp.route('/dummyprofile/<string:Username>', methods=['GET', 'POST'])
 def profile(Username):
-
     user = Users.query.get(Username)
 
     if (request.method == "POST"):
         return render_template(url_for('patient'))
 
     if (user.userStatus == "Patient"):
-         return render_template(url_for('patient'))
+        return render_template(url_for('patient'))
 
-    return render_template('dummyprofile.html', user = user)
+    return render_template('dummyprofile.html', user=user)
 
-@bp.route('/patient' , methods = ['GET', 'POST'])
+
+@bp.route('/patient', methods=['GET', 'POST'])
 def patient():
-
     if current_user.userstatus == "Patient":
         flash('you cannot become a patient again')
         render_template('accountview.html')
 
-    #user = Users.query.get(Username)
+    # user = Users.query.get(Username)
     user = current_user
 
     user.become_Patient()
@@ -338,11 +324,11 @@ def patient():
 
     user = current_user
 
-    return render_template('accountview.html', user = user)
+    return render_template('accountview.html', user=user)
 
-@bp.route('/therapist' , methods = ['GET', 'POST'])
+
+@bp.route('/therapist', methods=['GET', 'POST'])
 def therapist():
-
     user = current_user
 
     user.become_Therapist()
@@ -350,47 +336,50 @@ def therapist():
     db.session.commit()
 
     user = current_user
-    return render_template('accountview.html', user = user)
+    return render_template('accountview.html', user=user)
+
 
 @bp.route('/account')
 @login_required
 def account():
+    # user = Users.query.filter(id)
 
-    #user = Users.query.filter(id)
-    
     user = current_user
     flag = 0
 
-    return render_template('account.html', user = user)
+    return render_template('account.html', user=user)
+
 
 @bp.route('/findtherapist')
 @login_required
 def findtherapist():
-    #user = current_user
-    #requests = Request.query.filter_by(to = current_user.id)
-    #patient = Patient.query.get(id = current_user.id)
-    therapists= Therapist.query.all()
-    #therapists = Therapist.query.filter_by(numPatients< 10, request.to != therapist.id)
-    availables = Therapist.query.join(Request, Therapist.id == Request.origin).filter(Therapist.numPatients < 10 , Request.to != current_user.id)
+    # user = current_user
+    # requests = Request.query.filter_by(to = current_user.id)
+    # patient = Patient.query.get(id = current_user.id)
+    therapists = Therapist.query.all()
+    # therapists = Therapist.query.filter_by(numPatients< 10, request.to != therapist.id)
+    availables = Therapist.query.join(Request, Therapist.id == Request.origin).filter(Therapist.numPatients < 10,
+                                                                                      Request.to != current_user.id)
 
-    return render_template('findtherapist.html',  therapists = therapists, availables = availables)
+    return render_template('findtherapist.html', therapists=therapists, availables=availables)
+
 
 @bp.route('/findpatient')
 @login_required
 def findpatient():
-
     patients = Patient.query.all()
-    requests = Request.query.filter_by(to = current_user.id)
-    
+    requests = Request.query.filter_by(to=current_user.id)
+
     if (requests):
         print(requests)
-   
-        availables = Patient.query.join(Request, Patient.id == Request.origin).filter(Patient.hasTherapist == False, Request.to != current_user.id).all()
+
+        availables = Patient.query.join(Request, Patient.id == Request.origin).filter(Patient.hasTherapist == False,
+                                                                                      Request.to != current_user.id).all()
         print(availables, current_user.id)
 
-        return render_template('findpatient.html', patients = patients, requests = requests, availables = availables)
-    
-    return render_template('findpatient.html', patients = patients, requests = requests)
+        return render_template('findpatient.html', patients=patients, requests=requests, availables=availables)
+
+    return render_template('findpatient.html', patients=patients, requests=requests)
 
 
 @bp.route('/revertaccount')
@@ -409,41 +398,39 @@ def revertaccount():
 
     return render_template('revertaccount.html')
 
+
 @bp.route('/sendrequest/<int:to>')
 @login_required
 def sendrequest(to):
-
     id = current_user.id
     user = current_user
 
     if current_user.userstatus == "Therapist":
         therapist = Therapist.query.get(id)
         patient = Patient.query.get(to)
-        request = Request(origin = therapist.id, to = patient.id)
+        request = Request(origin=therapist.id, to=patient.id)
         db.session.add(request)
         db.session.commit()
 
     if current_user.userstatus == "Patient":
         patient = Patient.query.get(id)
         therapist = Therapist.query.get(to)
-        request = Request(origin = patient.id, to = therapist.id)
+        request = Request(origin=patient.id, to=therapist.id)
         db.session.add(request)
         db.session.commit()
-
 
     flash('Your request has been sent')
 
     return render_template('accountview.html')
 
+
 @bp.route('/requestresponse/<int:id>/<string:to>')
 @login_required
-def requestresponse(id,to):
-
+def requestresponse(id, to):
     request = Request.query.get(id)
 
     id = current_user.id
     user = current_user
-
 
     request.respondRequest()
 
@@ -452,18 +439,17 @@ def requestresponse(id,to):
 
 @bp.route('/accept/<int:id>/<int:origin>')
 @login_required
-def accept(id,origin):
-
+def accept(id, origin):
     request = Request.query.get(id)
-    #origin = Request.query.get(origin)
+    # origin = Request.query.get(origin)
 
     id = current_user.id
     user = current_user
 
     if current_user.userstatus == "Therapist":
-        #therapist = Therapist.query.get(current_user.id)
-        #patient = Patient.query.get()
-        accepted_request = T_Patients(id = request.id, t_id = current_user.id , p_id = request.origin, response = "accepted")
+        # therapist = Therapist.query.get(current_user.id)
+        # patient = Patient.query.get()
+        accepted_request = T_Patients(id=request.id, t_id=current_user.id, p_id=request.origin, response="accepted")
         therapist = Therapist.query.get(current_user.id)
         therapist.numPatients += 1
         patient = Patient.query.get(request.origin)
@@ -473,10 +459,10 @@ def accept(id,origin):
         db.session.commit()
 
     if current_user.userstatus == "Patient":
-        #patient = Patient.query.get(current_user.id)
-        #therapist = Therapist.query.get()
-        #request.acceptRequest(therapist.id, patient.id)
-        accepted_request = T_Patients(id = request.id, t_id = request.origin , p_id = current_user.id, response = "accepted")
+        # patient = Patient.query.get(current_user.id)
+        # therapist = Therapist.query.get()
+        # request.acceptRequest(therapist.id, patient.id)
+        accepted_request = T_Patients(id=request.id, t_id=request.origin, p_id=current_user.id, response="accepted")
         therapist = Therapist.query.get(request.origin)
         therapist.numPatients += 1
         patient = Patient.query.get(current_user.id)
@@ -490,10 +476,10 @@ def accept(id,origin):
 
     return render_template('accountview.html')
 
+
 @bp.route('/decline/<int:id>/<int:origin>')
 @login_required
-def decline(id,origin):
-
+def decline(id, origin):
     request = Request.query.get(id)
     origin = Request.query.get(origin)
 
@@ -501,31 +487,28 @@ def decline(id,origin):
     user = current_user
 
     if current_user.userstatus == "Therapist":
-        declined_request = T_Patients(id = request.id, t_id = current_user.id, p_id = request.origin, response = "declined")
-        db.session.add(accepted_request)
+        declined_request = T_Patients(id=request.id, t_id=current_user.id, p_id=request.origin, response="declined")
+        db.session.add(declined_request)
         db.session.commit()
-
 
     if current_user.userstatus == "Patient":
-        declined_request = T_Patients(id = request.origin, p_id = current_user.id, response = "declined")
-        db.session.add(accepted_request)
+        declined_request = T_Patients(id=request.origin, p_id=current_user.id, response="declined")
+        db.session.add(declined_request)
         db.session.commit()
-    
-    #therapist.numPatients += therapist.numPatients
+
+    # therapist.numPatients += therapist.numPatients
     patient.hasTherapist = False
 
     return render_template('accountview.html')
 
 
-
 @bp.route('/removetherapist/<int:id>')
 @login_required
 def removetherapist(id):
-
-    mytherapist = T_Patients.query.filter_by(t_id = id).one()
-    therapist = Therapist.query.get(id = id)
-    therapist.numPatients -=1 
-    patient = Patient.query.get(id = current_user.id)
+    mytherapist = T_Patients.query.filter_by(t_id=id).one()
+    therapist = Therapist.query.get(id=id)
+    therapist.numPatients -= 1
+    patient = Patient.query.get(id=current_user.id)
     patient.T_ID = None
     patient.hasTherapist = False
     db.session.delete(mytherapist)
@@ -533,34 +516,35 @@ def removetherapist(id):
 
     flash('you have deleted your therapist')
 
-    return render_template('accountview.html') 
+    return render_template('accountview.html')
+
 
 @bp.route('/removepatient/<int:id>')
 @login_required
 def removepatient(id):
-
-    #patients = Patient.query.filter_by()
-    #mypatientT_Patients.query.filter_by(p_id = id)
-    #patients = Patients.query.filter_by(T_ID = current_user.id)
-    mypatient = T_Patients.query.filter_by(p_id = id).one()
-    therapist = Therapist.query.get(id = current_user.id)
-    therapist.numPatients -=1 
-    patient = Patient.query.get(id = id )
+    # patients = Patient.query.filter_by()
+    # mypatientT_Patients.query.filter_by(p_id = id)
+    # patients = Patients.query.filter_by(T_ID = current_user.id)
+    mypatient = T_Patients.query.filter_by(p_id=id).one()
+    therapist = Therapist.query.get(id=current_user.id)
+    therapist.numPatients -= 1
+    patient = Patient.query.get(id=id)
     patient.hasTherapist = False
     db.session.delete(mypatient)
     db.session.commit()
 
     flash('you have deleted your patient')
 
-    return render_template('accountview.html') 
+    return render_template('accountview.html')
 
-@bp.route('/affirmation', methods = ['GET', 'POST'])
+
+@bp.route('/affirmation', methods=['GET', 'POST'])
 @login_required
 def affirmation():
     form = createAEntry()
 
     if form.validate_on_submit():
-        a = models.AffirmationEntry(AffirmationEntryTitle=form.EntryTitle.data, AffirmationEntryText=form.EntryText.data)
+        a = AffirmationEntry(AffirmationEntryTitle=form.EntryTitle.data, AffirmationEntryText=form.EntryText.data)
         db.session.add(a)
         db.session.commit()
         flash('Affirmation has been created!', category='success')
@@ -570,12 +554,14 @@ def affirmation():
 
 @bp.route('/viewAffirmation')
 def affirmationview():
-    affirmationEntries=AffirmationEntry.query.all()
+    affirmationEntries = AffirmationEntry.query.all()
     return render_template('affirmationview.html', entries=affirmationEntries)
 
-"""
-#chatbot files
-bot = ChatBot("Chatbot Therapist")
+
+from app.main import config
+
+# chatbot files
+bot = ChatBot("Chatbot Therapist", database_uri=config.Config.CHATBOT_DATABASE_URI)
 conversation = [
     "Hello",
     "Hi there!",
@@ -591,22 +577,25 @@ conversation = [
 ]
 trainer = ListTrainer(bot)
 trainer.train(conversation)
-#training on english dataset
-#for files in os.listdir('./english/'):
+# training on english dataset
+# for files in os.listdir('./english/'):
 #    data=open('./english/'+files,'r').readlines()
 #    bot.train(data)
 
 trainer = ChatterBotCorpusTrainer(bot)
 trainer.train('chatterbot.corpus.english')
-"""
+
 
 @bp.route("/chat")
 def chat():
     return render_template("chat.html")
 
+
 @bp.route("/contact")
 def contact():
     return render_template("contact.html")
+
+
 """
 @bp.route("/get")
 def get_bot_response():
