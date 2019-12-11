@@ -21,7 +21,7 @@
 
 {% for patient in patients %}
 
-<p> {{patient.patientName}}</p> <a href = "{{url_for('main.sendrequest', to = patient.id )}}"> Invite to be my patient</a>
+<p> {{patient.Username}}</p> <a href = "{{url_for('main.sendrequest', to = patient.id )}}"> Invite to be my patient</a>
 {% endfor %}
 
 {% endblock %}

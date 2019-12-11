@@ -34,12 +34,14 @@
   <ul>My requests
   
     {% for request in requests %}
-    {% if request.status != accepted %}
-    <li>name: {{request.origin}} </li>
-     <a href="{{url_for('main.accept', id = request.id, origin = request.origin)}}">Accept</a>
-     <a href="{{url_for('main.decline', id = request.id, origin = request.origin)}}">Decline</a>
-    {% endif %}
-     {% endfor %}
+        {% if request.status != accepted %}
+            <li>
+                <p>name: {{request.origin}}</p>
+                <a href="{{url_for('main.accept', id = request.id, origin = request.origin)}}">Accept</a>
+                <a href="{{url_for('main.decline', id = request.id, origin = request.origin)}}">Decline</a>
+            </li>
+        {% endif %}
+    {% endfor %}
      
   </ul>
 

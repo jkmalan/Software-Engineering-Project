@@ -20,7 +20,7 @@
 <h2>Find a therapist</h2>
 {% for therapist in therapists %}
 
-<p> {{therapist.therapistName}}</p> <a href = "{{url_for('main.sendrequest', to = therapist.id )}}"> Invite to be my Therapist</a>
+<p> {{therapist.fullname}}</p> <a href = "{{url_for('main.sendrequest', to = therapist.id )}}"> Invite to be my Therapist</a>
 
 {% endfor %}
 {% endblock %}

@@ -11,6 +11,7 @@ from .models import Journal
 from .models import JournalEntry
 from .models import AffirmationEntry
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import and_, or_
 # from app.api.request import *
 from app.api.request import analyze
 from flask_login import login_required, current_user, logout_user, login_user
@@ -23,7 +24,7 @@ from flask import send_file
 from flask import Response
 
 
-#import chatbot files
+# import chatbot files
 from chatterbot import ChatBot
 from chatterbot.trainers import ChatterBotCorpusTrainer
 from chatterbot.trainers import ListTrainer
@@ -343,31 +344,39 @@ def account():
 @bp.route('/findtherapist')
 @login_required
 def findtherapist():
-    #user = current_user
-    #requests = Request.query.filter_by(to = current_user.id)
-    #patient = Patient.query.get(id = current_user.id)
-    therapists= Therapist.query.all()
-    #therapists = Therapist.query.filter_by(numPatients< 10, request.to != therapist.id)
-    therapists = Therapist.query.join(Request, Therapist.id == Request.origin).filter(Therapist.numPatients < 10 , Request.to != current_user.id)
+    # Find all therapists who have less than 10 patients and have not sent a request for patient to 'current_user'
 
-    return render_template('findtherapist.html',  therapists = therapists)#, availables = availables)
+    therapist_results = Users.query \
+        .join(Therapist, Therapist.id == Users.id, isouter=True) \
+        .join(Request, Request.origin == Users.id, isouter=True) \
+        .add_columns(Users.id, Users.Username, Users.fullname) \
+        .filter(and_(Therapist.numPatients < 10, or_(Request.id == None))) \
+        .all()
+
+    print(therapist_results)
+    for one in therapist_results:
+        print(one)
+
+    return render_template('findtherapist.html',  therapists=therapist_results)
+
 
 @bp.route('/findpatient')
 @login_required
 def findpatient():
+    # Find all patients who have no therapist and have not sent a request for therapist to 'current_user'
 
-    patients = Patient.query.all()
-    requests = Request.query.filter_by(to = current_user.id)
-    
-    if (requests):
-        print(requests)
-   
-        patients = Patient.query.join(Request, Patient.id == Request.origin).filter(Patient.hasTherapist == False, Request.to != current_user.id).all()
-        #print(availables, current_user.id)
+    patient_results = Users.query \
+        .join(Patient, Patient.id == Users.id) \
+        .join(Request, Request.origin == Users.id, isouter=True) \
+        .add_columns(Users.id, Users.Username, Users.fullname, Patient.hasTherapist) \
+        .filter(and_(or_(Patient.hasTherapist == None, Patient.hasTherapist == False), or_(Request.id == None))) \
+        .all()
 
-        return render_template('findpatient.html', patients = patients, requests = requests)#, availables = availables)
+    print(patient_results)
+    for one in patient_results:
+        print(one)
     
-    return render_template('findpatient.html', patients = patients, requests = requests)
+    return render_template('findpatient.html', patients=patient_results)
 
 
 @bp.route('/revertaccount')

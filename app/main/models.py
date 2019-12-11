@@ -1,13 +1,10 @@
-import os
 from . import flask_bcrypt
 from . import login
 from datetime import datetime
-from hashlib import md5
 from . import db
-from flask_sqlalchemy import SQLAlchemy
 
 
-#db = SQLAlchemy()
+# db = SQLAlchemy()
 
 class Users(db.Model):
     __tablename__ = "Users"
